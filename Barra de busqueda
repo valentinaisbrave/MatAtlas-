@@ -1,0 +1,60 @@
+import pandas as pd
+import streamlit as st
+
+# 1. Configuracion de la pagina
+st.set_page_config(
+    page_title="Buscador de Materiales",
+    layout="wide"
+)
+
+st.title("Buscador y Gestor de Materiales")
+st.write("Bienvenido. Utiliza la barra de busqueda para encontrar materiales rapidamente.")
+
+# 2. Simulacion de una base de datos de materiales
+@st.cache_data
+def cargar_datos():
+    data = {
+        "Codigo": ["M001", "M002", "M003", "M004", "M005"],
+        "Nombre del Material": [
+            "Cemento Polycemento",
+            "Varilla Corrugada 3/8",
+            "Arena de Rio",
+            "Ladrillo H10",
+            "Tuberia PVC 2 pulgadas",
+        ],
+        "Categoria": [
+            "Construccion",
+            "Estructura",
+            "Aridos",
+            "Mamposteria",
+            "Plomeria",
+        ],
+        "Stock Disponible": [120, 450, 80, 1200, 300],
+        "Unidad": ["Bultos", "Varillas", "m3", "Unidades", "Metros"],
+    }
+    return pd.DataFrame(data)
+
+df_materiales = cargar_datos()
+
+# 3. Seccion de Busqueda
+st.subheader("Filtro de busqueda")
+
+# Barra de texto libre para buscar materiales
+busqueda_texto = st.text_input("Escribe el nombre del material a buscar:", "")
+
+# 4. Filtrar los datos segun la busqueda del usuario
+if busqueda_texto:
+    df_filtrado = df_materiales[
+        df_materiales["Nombre del Material"]
+        .str.contains(busqueda_texto, case=False, na=False)
+    ]
+else:
+    df_filtrado = df_materiales
+
+# 5. Mostrar los resultados
+st.subheader("Resultados:")
+if not df_filtrado.empty:
+    st.dataframe(df_filtrado, use_container_width=True)
+    st.success(f"Se encontraron {len(df_filtrado)} material(es).")
+else:
+    st.warning("No se encontro ningun material con ese nombre.")
