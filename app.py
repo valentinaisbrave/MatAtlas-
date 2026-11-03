@@ -3,14 +3,14 @@ import streamlit as st
 
 # 1. Configuracion de la pagina
 st.set_page_config(
-    page_title="Buscador y Gestor de Materiales",
+    page_title="Buscador de Materiales",
     layout="wide"
 )
 
-st.title("Buscador y Gestor de Materiales")
-st.write("Sistema de control de inventario de materiales.")
+st.title("Buscador de Materiales y Contexto")
+st.write("Utiliza la barra de texto o sube una foto para buscar materiales en el sistema.")
 
-# 2. Base de datos simulada usando el estado de session_state
+# 2. Base de datos simulada de materiales (preparada para futura integracion con IA)
 if "df_materiales" not in st.session_state:
     st.session_state.df_materiales = pd.DataFrame({
         "Codigo": ["M001", "M002", "M003", "M004", "M005"],
@@ -33,88 +33,74 @@ if "df_materiales" not in st.session_state:
         "Imagen_Referencia": ["cemento.jpg", "varilla.jpg", "arena.jpg", "ladrillo.jpg", "pvc.jpg"]
     })
 
+# 3. Inicializar el historial de busquedas en la sesion
+if "historial" not in st.session_state:
+    st.session_state.historial = []
+
 df_materiales = st.session_state.df_materiales
 
-# --- METRICAS RAPIDAS ---
-st.subheader("Resumen del Inventario")
-col1, col2, col3 = st.columns(3)
-col1.metric("Total de Materiales", len(df_materiales))
-col2.metric("Stock Total", int(df_materiales["Stock Disponible"].sum()))
-stock_bajo = len(df_materiales[df_materiales["Stock Disponible"] < 50])
-col3.metric("Materiales con Stock Bajo", stock_bajo, delta=-stock_bajo if stock_bajo > 0 else 0, delta_color="inverse")
+# 4. Opciones de Busqueda (Texto o Foto)
+st.subheader("Filtro de busqueda")
+pestana_texto, pestana_foto = st.tabs(["Buscar por texto", "Buscar por foto"])
 
+df_filtrado = pd.DataFrame() # Inicia vacio o completo segun prefieras
+
+with pestana_texto:
+    busqueda_texto = st.text_input("Escribe el nombre del material a buscar:", "", key="input_busqueda_texto")
+    
+    if busqueda_texto:
+        df_filtrado = df_materiales[
+            df_materiales["Nombre del Material"]
+            .str.contains(busqueda_texto, case=False, na=False)
+        ]
+        # Guardar en el historial si hay busqueda activa
+        termino_busqueda = f"Texto: {busqueda_texto}"
+        if termino_busqueda not in st.session_state.historial:
+            st.session_state.historial.insert(0, termino_busqueda)
+
+with pestana_foto:
+    archivo_imagen = st.file_uploader("Sube una foto del material:", type=["jpg", "jpeg", "png"], key="uploader_foto")
+    
+    if archivo_imagen is not None:
+        st.image(archivo_imagen, caption="Imagen cargada para busqueda", width=300)
+        nombre_archivo = archivo_imagen.name.lower()
+        
+        # Simulacion de cruce por foto (aqui despues entrara la IA)
+        df_filtrado = df_materiales[
+            df_materiales["Imagen_Referencia"].str.lower().apply(lambda x: x in nombre_archivo or nombre_archivo in x)
+        ]
+        
+        if df_filtrado.empty:
+            st.info("Imagen procesada. No se encontro coincidencia exacta automatica, mostrando base completa.")
+            df_filtrado = df_materiales
+            
+        termino_busqueda = f"Foto: {archivo_imagen.name}"
+        if termino_busqueda not in st.session_state.historial:
+            st.session_state.historial.insert(0, termino_busqueda)
+
+# 5. Mostrar resultados de la busqueda actual
 st.markdown("---")
+st.subheader("Resultados de la busqueda:")
 
-# 3. Seccion de Busqueda y Gestion por pestañas principales
-pestana_buscar, pestana_registrar = st.tabs(["Buscar Material", "Registrar Nuevo Material"])
-
-with pestana_buscar:
-    st.subheader("Filtro de busqueda")
-    pestana_texto, pestana_foto = st.tabs(["Buscar por texto", "Buscar por foto (Simulado)"])
-
-    df_filtrado = df_materiales.copy()
-
-    with pestana_texto:
-        # CORRECCION: Se añade un 'key' unico para evitar el error de duplicidad
-        busqueda_texto = st.text_input("Escribe el nombre del material a buscar:", "", key="input_busqueda_texto")
-        if busqueda_texto:
-            df_filtrado = df_materiales[
-                df_materiales["Nombre del Material"]
-                .str.contains(busqueda_texto, case=False, na=False)
-            ]
-
-    with pestana_foto:
-        archivo_imagen = st.file_uploader("Sube una foto del material:", type=["jpg", "jpeg", "png"], key="uploader_foto")
-        if archivo_imagen is not None:
-            st.image(archivo_imagen, caption="Imagen cargada para busqueda", width=300)
-            nombre_archivo = archivo_imagen.name.lower()
-            df_filtrado = df_materiales[
-                df_materiales["Imagen_Referencia"].str.lower().apply(lambda x: x in nombre_archivo or nombre_archivo in x)
-            ]
-            if df_filtrado.empty:
-                st.info("La imagen fue recibida. Coincidencia automatica simulada no encontrada, mostrando inventario completo.")
-                df_filtrado = df_materiales
-
-    st.subheader("Resultados:")
+if 'busqueda_texto' in locals() and busqueda_texto or ('archivo_imagen' in locals() and archivo_imagen is not None):
     if not df_filtrado.empty:
         st.dataframe(df_filtrado, use_container_width=True)
         st.write(f"Se encontraron {len(df_filtrado)} material(es).")
-        
-        st.markdown("---")
-        st.subheader("Detalle del Material")
-        material_seleccionado = st.selectbox("Selecciona un material para ver su detalle:", df_filtrado["Nombre del Material"].unique(), key="select_detalle_material")
-        
-        if material_seleccionado:
-            detalle = df_materiales[df_materiales["Nombre del Material"] == material_seleccionado].iloc[0]
-            col_d1, col_d2 = st.columns(2)
-            col_d1.write(f"**Codigo:** {detalle['Codigo']}")
-            col_d1.write(f"**Categoria:** {detalle['Categoria']}")
-            col_d2.write(f"**Stock Disponible:** {detalle['Stock Disponible']} {detalle['Unidad']}")
     else:
         st.warning("No se encontro ningun material con los parametros especificados.")
+else:
+    st.info("Realiza una busqueda por texto o sube una imagen arriba para ver los resultados.")
 
-with pestana_registrar:
-    st.subheader("Formulario de Registro de Material")
-    with st.form("form_nuevo_material"):
-        nuevo_codigo = st.text_input("Codigo del Material (Ej. M006):", key="form_codigo")
-        nuevo_nombre = st.text_input("Nombre del Material:", key="form_nombre")
-        nueva_categoria = st.selectbox("Categoria:", ["Construccion", "Estructura", "Aridos", "Mamposteria", "Plomeria", "Herramientas"], key="form_categoria")
-        nuevo_stock = st.number_input("Stock Inicial:", min_value=0, step=1, key="form_stock")
-        nueva_unidad = st.selectbox("Unidad de Medida:", ["Bultos", "Varillas", "m3", "Unidades", "Metros", "Kilos"], key="form_unidad")
-        
-        boton_enviar = st.form_submit_button("Guardar Material")
-        
-        if boton_enviar:
-            if nuevo_codigo and nuevo_nombre:
-                nuevo_registro = pd.DataFrame({
-                    "Codigo": [nuevo_codigo],
-                    "Nombre del Material": [nuevo_nombre],
-                    "Categoria": [nueva_categoria],
-                    "Stock Disponible": [nuevo_stock],
-                    "Unidad": [nueva_unidad],
-                    "Imagen_Referencia": ["default.jpg"]
-                })
-                st.session_state.df_materiales = pd.concat([st.session_state.df_materiales, nuevo_registro], ignore_index=True)
-                st.success(f"Material {nuevo_nombre} registrado correctamente. Ve a la pestaña de busqueda para visualizarlo.")
-            else:
-                st.error("Por favor completa al menos el codigo y el nombre del material.")
+# 6. Seccion de Historial de Busquedas
+st.markdown("---")
+st.subheader("Historial de busquedas recientes")
+if st.session_state.historial:
+    # Mostrar los ultimos 5 elementos del historial
+    for item in st.session_state.historial[:5]:
+        st.text(f"- {item}")
+    
+    if st.button("Limpiar historial"):
+        st.session_state.historial = []
+        st.rerun()
+else:
+    st.write("Aun no hay busquedas registradas en esta sesion.")
