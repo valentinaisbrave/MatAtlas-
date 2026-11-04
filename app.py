@@ -27,7 +27,7 @@ def pipeline_text_generation(texto_usuario):
     except Exception as e:
         if "503" in str(e) or "demand" in str(e).lower():
             fallback = client.interactions.create(
-                model="gemini-1.5-flash",
+                model="gemini-3.5-flash",
                 input=prompt
             )
             return fallback.output_text.strip()
@@ -47,7 +47,7 @@ def pipeline_image_to_text(imagen_cargada):
     except Exception as e:
         if "503" in str(e) or "demand" in str(e).lower():
             fallback = client.interactions.create(
-                model="gemini-1.5-flash",
+                model="gemini-3.5-flash",
                 input=prompt
             )
             return fallback.output_text.strip()
