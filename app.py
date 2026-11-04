@@ -18,23 +18,59 @@ st.set_page_config(
     layout="wide"
 )
 
-MODELO_PRINCIPAL = "gemini-3.5-flash-lite"
+MODELO_PRINCIPAL = "gemini-3.8-flash-lite"
 MODELO_RESPALDO = "gemini-3.6-flash"
+
 
 INSTRUCCIONES = """
 Eres MAT(R)IZ, una inteligencia artificial especializada
-en materiales de construccion y arquitectura.
+en materiales, arte, arquitectura, diseño e historia.
 
-REGLAS OBLIGATORIAS:
-1. Responde siempre en español.
-2. Identifica el material con su nombre tecnico.
-3. Agrega un contexto tecnico de maximo 15 palabras.
-4. No escribas introducciones ni despedidas.
-5. No uses listas ni explicaciones extensas.
-6. Utiliza este formato:
-Nombre del material — descripcion tecnica.
-7. Si no puedes identificarlo, indica que no hay
-informacion suficiente.
+Responde siempre en español, con información clara,
+precisa, interesante y académica.
+
+Tu objetivo es crear una ficha cultural y técnica del
+material identificado.
+
+ESTRUCTURA OBLIGATORIA:
+
+Primera línea:
+MATERIAL: nombre del material
+
+Después desarrolla estas secciones:
+
+### 01. Contexto técnico
+Explica qué es el material, su composición,
+sus propiedades físicas y sus aplicaciones.
+Extensión: entre 60 y 90 palabras.
+
+### 02. Contexto histórico
+Explica el origen del material, su evolución,
+las civilizaciones o épocas que lo utilizaron
+y su importancia en la historia.
+Extensión: entre 70 y 100 palabras.
+
+### 03. Referente artístico o arquitectónico
+Menciona al menos una obra, artista, arquitecto
+o movimiento que utilice el material.
+Incluye el nombre, la fecha aproximada
+y la relación del material con la obra.
+Extensión: entre 60 y 90 palabras.
+
+### 04. Aplicaciones contemporáneas
+Explica cómo se utiliza actualmente en
+arquitectura, diseño, arte o construcción.
+Extensión: entre 40 y 60 palabras.
+
+REGLAS:
+- Responde exclusivamente en español.
+- No escribas introducciones ni despedidas.
+- Utiliza lenguaje técnico comprensible.
+- Prioriza referentes artísticos reales y verificables.
+- No inventes fechas, autores ni edificios.
+- Si desconoces un dato histórico, dilo claramente.
+- Si una imagen es ambigua, expresa la incertidumbre.
+- No agregues enlaces ni fotografías inventadas.
 """
 
 
@@ -75,8 +111,8 @@ def consultar_gemini(contenido):
 
     configuracion = types.GenerateContentConfig(
         system_instruction=INSTRUCCIONES,
-        temperature=0.2,
-        max_output_tokens=120
+        temperature=0.4,
+        max_output_tokens=1100
     )
 
     try:
@@ -231,6 +267,81 @@ def guardar_resultado(resultado, consulta):
 
     st.session_state.historial.insert(0, consulta)
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def buscar_foto_material(nombre_material):
+
+    # Sustituye esta URL por la de tu repositorio publico.
+    identificacion = (
+        "MatrizApp/1.0 "
+        "(https://github.com/tu-usuario/tu-repositorio)"
+    )
+
+    parametros = {
+        "action": "query",
+        "generator": "search",
+        "gsrsearch": nombre_material + " material texture",
+        "gsrnamespace": 6,
+        "gsrlimit": 8,
+        "prop": "imageinfo",
+        "iiprop": "url|mime|extmetadata",
+        "iiurlwidth": 320,
+        "iiextmetadatafilter": "LicenseShortName",
+        "format": "json"
+    }
+
+    try:
+        respuesta = requests.get(
+            "https://commons.wikimedia.org/w/api.php",
+            params=parametros,
+            headers={"User-Agent": identificacion},
+            timeout=5
+        )
+
+        respuesta.raise_for_status()
+        datos = respuesta.json()
+
+        paginas = datos.get("query", {}).get("pages", {})
+
+        for pagina in paginas.values():
+            imagenes = pagina.get("imageinfo", [])
+
+            if not imagenes:
+                continue
+
+            info = imagenes[0]
+
+            if not info.get("mime", "").startswith("image/"):
+                continue
+
+            miniatura = info.get("thumburl")
+
+            if miniatura:
+                licencia = info.get(
+                    "extmetadata", {}
+                ).get("LicenseShortName", {}).get("value", "")
+
+                return {
+                    "url": miniatura,
+                    "fuente": info.get("descriptionurl", ""),
+                    "licencia": licencia
+                }
+
+    except requests.RequestException:
+        pass
+    except ValueError:
+        pass
+
+    return None
+
+
+def extraer_nombre_material(resultado):
+    primera_linea = resultado.splitlines()[0].strip()
+
+    if primera_linea.upper().startswith("MATERIAL:"):
+        return primera_linea.split(":", 1)[1].strip()
+
+    return primera_linea[:80]
+
 
 # ==========================================
 # INTERFAZ PRINCIPAL
@@ -367,7 +478,7 @@ with col_centro:
 
 st.divider()
 
-st.subheader("Contexto y materiales encontrados por la IA")
+st.subheader("Archivo de materiales MAT(R)IZ")
 
 materiales = st.session_state.materiales_encontrados
 
@@ -376,15 +487,57 @@ if materiales:
     for indice, material in enumerate(materiales):
 
         with st.container(border=True):
-            st.markdown(f"**Elemento {indice + 1}**")
-            st.write(material)
+
+            st.caption(f"FICHA {indice + 1:03d}")
+
+            nombre = extraer_nombre_material(material)
+
+            columna_foto, columna_texto = st.columns(
+                [1, 2],
+                gap="large"
+            )
+
+            with columna_foto:
+
+                fotografia = buscar_foto_material(nombre)
+
+                if fotografia:
+
+                    st.image(
+                        fotografia["url"],
+                        width="stretch"
+                    )
+
+                    st.caption(
+                        "Fotografía de referencia"
+                    )
+
+                    if fotografia["fuente"]:
+                        st.markdown(
+                            f"[Ver autoría y licencia]"
+                            f"({fotografia['fuente']})"
+                        )
+
+                    if fotografia["licencia"]:
+                        st.caption(
+                            f"Licencia: {fotografia['licencia']}"
+                        )
+
+                else:
+                    st.caption(
+                        "No se encontró una fotografía "
+                        "de referencia."
+                    )
+
+            with columna_texto:
+
+                st.markdown(material)
 
 else:
     st.info(
-        "Todavia no hay materiales analizados. "
-        "Realiza una busqueda para comenzar."
+        "Todavía no hay materiales analizados. "
+        "Realiza una búsqueda para comenzar."
     )
-
 
 # ==========================================
 # CONEXIONES ENTRE MATERIALES
