@@ -30,24 +30,22 @@ if "df_materiales" not in st.session_state:
         "Imagen_Referencia": ["cemento.jpg", "varilla.jpg", "arena.jpg", "ladrillo.jpg", "pvc.jpg"]
     })
 
-# Inicializar el historial y las conexiones en la sesion
+# Inicializar historial y conexiones en la sesion
 if "historial" not in st.session_state:
     st.session_state.historial = []
 
-if "conexiones" not in st.session_state:
-    st.session_state.conexiones = []
+if "conexiones_red" not in st.session_state:
+    st.session_state.conexiones_red = []
 
 df_materiales = st.session_state.df_materiales
 
 # --- BLOQUE 1: TEXTO Y BARRA DE BUSQUEDA CENTRADOS ---
-# Usamos tres columnas para dejar un espacio a los lados y centrar el contenido en la del medio
 col_izq, col_centro, col_der = st.columns([1, 2, 1])
 
 with col_centro:
     st.markdown("<h1 style='text-align: center;'>Buscador de Materiales</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center;'>Utiliza el buscador por texto o sube una foto.</p>", unsafe_allow_html=True)
     
-    # Pestañas de busqueda dentro del bloque central
     pestana_texto, pestana_foto = st.tabs(["Buscar por texto", "Buscar por foto"])
 
 df_filtrado = pd.DataFrame()
@@ -83,7 +81,7 @@ with col_centro:
 
 st.markdown("---")
 
-# --- BLOQUE 2: RESULTADOS DE LA BUSQUEDA (DEBAJO DE LA BUSQUEDA) ---
+# --- BLOQUE 2: RESULTADOS DE LA BUSQUEDA ---
 st.subheader("Resultados de la Busqueda")
 
 if busqueda_activa:
@@ -96,38 +94,42 @@ else:
 
 st.markdown("---")
 
-# --- BLOQUE 3: AREA DE VINCULOS Y RED DE MATERIALES (MAS ABAJO) ---
-st.subheader("Espacio de Vinculos y Relaciones")
-st.write("Selecciona dos materiales para crear un vinculo o conexion entre ellos en esta sesion.")
+# --- BLOQUE 3: AREA DE BURBUJAS Y CONEXION MULTIPLE ---
+st.subheader("Red de Materiales por Burbujas")
+st.write("Selecciona varios materiales en forma de burbujas para conectarlos todos entre si en una red de relaciones.")
 
 lista_materiales_nombres = df_materiales["Nombre del Material"].tolist()
 
-col_v1, col_v2, col_v3 = st.columns(3)
-with col_v1:
-    material_origen = st.selectbox("Material A:", lista_materiales_nombres, key="Mat_A")
-with col_v2:
-    material_destino = st.selectbox("Material B:", lista_materiales_nombres, key="Mat_B")
-with col_v3:
-    st.write("") # Espaciador vertical
-    st.write("")
-    crear_vinculo = st.button("Conectar Materiales")
+# Selector multiple que genera burbujas o chips visuales limpios
+burbujas_seleccionadas = st.multiselect(
+    "Selecciona los materiales que deseas vincular:",
+    options=lista_materiales_nombres,
+    key="multiselect_burbujas_materiales"
+)
 
-if crear_vinculo:
-    if material_origen != material_destino:
-        nuevo_vinculo = f"{material_origen} conectado con {material_destino}"
-        if nuevo_vinculo not in st.session_state.conexiones:
-            st.session_state.conexiones.append(nuevo_vinculo)
-            st.success("Vinculo creado exitosamente.")
+if st.button("Crear Red de Conexiones"):
+    if len(burbujas_seleccionadas) >= 2:
+        # Generar todas las combinaciones posibles entre las burbujas seleccionadas
+        for i in range(len(burbujas_seleccionadas)):
+            for j in range(i + 1, len(burbujas_seleccionadas)):
+                conexion_par = f"{burbujas_seleccionadas[i]} <---> {burbujas_seleccionadas[j]}"
+                if conexion_par not in st.session_state.conexiones_red:
+                    st.session_state.conexiones_red.append(conexion_par)
+        st.success("Red de conexiones creada exitosamente entre las burbujas seleccionadas.")
     else:
-        st.error("No puedes conectar un material consigo mismo.")
+        st.error("Debes seleccionar al menos dos materiales para crear conexiones.")
 
-# Mostrar los vinculos creados en forma de red o lista flotante
-if st.session_state.conexiones:
-    st.markdown("### Mapa de Conexiones Activas:")
-    for conexion in st.session_state.conexiones:
-        st.code(conexion, language=None)
+# Mostrar la red de conexiones activas
+if st.session_state.conexiones_red:
+    st.markdown("### Mapa de Relaciones Activas:")
+    for rel in st.session_state.conexiones_red:
+        st.code(rel, language=None)
+    
+    if st.button("Limpiar Red de Conexiones"):
+        st.session_state.conexiones_red = []
+        st.rerun()
 else:
-    st.write("Aun no hay vinculos creados entre los materiales.")
+    st.write("Aun no hay relaciones creadas en la red.")
 
 st.markdown("---")
 
