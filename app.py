@@ -11,9 +11,12 @@ except Exception as e:
     st.error("Verifica la clave GEMINI_API_KEY en los secretos de Streamlit.")
     client = None
 
+# --- OPTIMIZACION 3: CACHE PARA EVITAR LLAMADAS REPETIDAS ---
+@st.cache_data(show_spinner=False)
 def pipeline_text_generation(texto_usuario):
-    """Pipeline con sistema de respaldo por alta demanda."""
-    prompt = f"Actua como un experto en construccion. Analiza y dame un nombre corto del material junto con su contexto tecnico principal: {texto_usuario}"
+    """Pipeline optimizado con limites estrictos de generacion."""
+    # OPTIMIZACION 1: Prompt restrictivo
+    prompt = f"Identifica este material de construccion: '{texto_usuario}'. Responde estrictamente con el nombre y maximo 15 palabras de contexto tecnico. Cero introducciones."
     
     try:
         interaction = client.interactions.create(
@@ -23,17 +26,17 @@ def pipeline_text_generation(texto_usuario):
         return interaction.output_text.strip()
     except Exception as e:
         if "503" in str(e) or "demand" in str(e).lower():
-            # Modelo de respaldo si los servidores 3.8 estan llenos
             fallback = client.interactions.create(
-                model="gemini-3.5-flash",
+                model="gemini-1.5-flash",
                 input=prompt
             )
             return fallback.output_text.strip()
         raise e
 
 def pipeline_image_to_text(imagen_cargada):
-    """Pipeline multimodal con sistema de respaldo."""
-    prompt = ["Identifica este material de construccion en la imagen. Dame un nombre corto y su contexto tecnico resumido.", imagen_cargada]
+    """Pipeline multimodal con limites estrictos."""
+    # OPTIMIZACION 1: Prompt restrictivo
+    prompt = ["Identifica el material de construccion de esta imagen. Responde estrictamente con el nombre y maximo 15 palabras de contexto tecnico. Cero introducciones.", imagen_cargada]
     
     try:
         interaction = client.interactions.create(
@@ -44,7 +47,7 @@ def pipeline_image_to_text(imagen_cargada):
     except Exception as e:
         if "503" in str(e) or "demand" in str(e).lower():
             fallback = client.interactions.create(
-                model="gemini-3.5-flash",
+                model="gemini-1.5-flash",
                 input=prompt
             )
             return fallback.output_text.strip()
@@ -70,7 +73,7 @@ with col_centro:
         busqueda_texto = st.text_input("Escribe sobre el material que buscas:", key="input_busqueda_centro")
         if st.button("Analizar con IA (Texto)", key="btn_ia_texto") and client:
             if busqueda_texto:
-                with st.spinner("Ejecutando pipeline de texto..."):
+                with st.spinner("Ejecutando pipeline optimizado..."):
                     try:
                         resultado_ia = pipeline_text_generation(busqueda_texto)
                         
@@ -81,7 +84,7 @@ with col_centro:
                         if termino not in st.session_state.historial:
                             st.session_state.historial.insert(0, termino)
                             
-                        st.success("Pipeline de texto completado.")
+                        st.success("Busqueda completada.")
                     except Exception as e:
                         st.error(f"Error en el pipeline de texto: {e}")
 
@@ -89,7 +92,11 @@ with col_centro:
         archivo_imagen = st.file_uploader("Sube una foto del material:", type=["jpg", "jpeg", "png"], key="uploader_foto_centro")
         if archivo_imagen is not None:
             img = Image.open(archivo_imagen)
-            st.image(img, caption="Imagen cargada para analisis", width=250)
+            
+            # OPTIMIZACION 2: Compresion de imagen antes de enviarla a la API
+            img.thumbnail((800, 800)) 
+            
+            st.image(img, caption="Imagen optimizada para analisis", width=250)
             
             if st.button("Analizar con IA (Foto)", key="btn_ia_foto") and client:
                 with st.spinner("Ejecutando pipeline de imagen..."):
@@ -103,7 +110,7 @@ with col_centro:
                         if termino not in st.session_state.historial:
                             st.session_state.historial.insert(0, termino)
                             
-                        st.success("Pipeline de imagen completado.")
+                        st.success("Analisis de imagen completado.")
                     except Exception as e:
                         st.error(f"Error en el pipeline de imagen: {e}")
 
