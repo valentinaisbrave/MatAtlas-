@@ -23,6 +23,7 @@ st.set_page_config(
 MODELO_PRINCIPAL = "gemini-3.5-flash-lite"
 MODELO_RESPALDO = "gemini-3.8-flash"
 
+
 INSTRUCCIONES = """
 Eres MAT(R)IZ, especialista en materiales,
 historia, arte y arquitectura.
@@ -73,6 +74,7 @@ REGLAS:
 
 @st.cache_resource
 def obtener_cliente(clave):
+
     return genai.Client(
         api_key=clave,
         http_options=types.HttpOptions(
@@ -85,8 +87,10 @@ try:
     client = obtener_cliente(
         st.secrets["GEMINI_API_KEY"]
     )
+
 except Exception:
     client = None
+
     st.error(
         "Falta GEMINI_API_KEY en los Secrets "
         "de Streamlit."
@@ -130,11 +134,13 @@ def consultar_gemini(contenido):
                 "not found"
             )
         ):
+
             respuesta = client.models.generate_content(
                 model=MODELO_RESPALDO,
                 contents=contenido,
                 config=configuracion
             )
+
         else:
             raise
 
@@ -363,12 +369,14 @@ def mostrar_error(error):
         "429" in mensaje
         or "resource_exhausted" in mensaje_lower
     ):
+
         st.error(
             "Se alcanzó el límite de solicitudes "
             "de Gemini. Revisa tu cuota."
         )
 
     elif "401" in mensaje or "403" in mensaje:
+
         st.error(
             "La API rechazó la solicitud. "
             "Revisa la clave y sus permisos."
@@ -378,6 +386,7 @@ def mostrar_error(error):
         "timeout" in mensaje_lower
         or "timed out" in mensaje_lower
     ):
+
         st.error(
             "Gemini tardó demasiado en responder."
         )
@@ -392,8 +401,7 @@ def mostrar_error(error):
 
 for variable, valor in {
     "materiales_encontrados": [],
-    "historial": [],
-    "conexiones_red": []
+    "historial": []
 }.items():
 
     if variable not in st.session_state:
@@ -431,33 +439,6 @@ for elemento in st.session_state.materiales_encontrados:
 
 st.session_state.materiales_encontrados = (
     materiales_normalizados
-)
-
-
-conexiones_normalizadas = []
-
-for conexion in st.session_state.conexiones_red:
-
-    if (
-        isinstance(conexion, (tuple, list))
-        and len(conexion) == 2
-    ):
-        conexiones_normalizadas.append(
-            tuple(conexion)
-        )
-
-    elif (
-        isinstance(conexion, str)
-        and " <---> " in conexion
-    ):
-        conexiones_normalizadas.append(
-            tuple(
-                conexion.split(" <---> ", 1)
-            )
-        )
-
-st.session_state.conexiones_red = (
-    conexiones_normalizadas
 )
 
 
@@ -750,83 +731,6 @@ else:
 
 
 # ==========================================
-# CONEXIONES ENTRE MATERIALES
-# ==========================================
-
-st.divider()
-
-st.subheader(
-    "Haz tus propias conexiones entre materiales"
-)
-
-if materiales:
-
-    seleccionados = st.multiselect(
-        "Selecciona al menos dos materiales:",
-        options=[
-            m["nombre"]
-            for m in materiales
-        ]
-    )
-
-    if st.button(
-        "Crear red de conexiones"
-    ):
-
-        if len(seleccionados) < 2:
-
-            st.warning(
-                "Selecciona al menos dos materiales."
-            )
-
-        else:
-
-            for i in range(len(seleccionados)):
-
-                for j in range(
-                    i + 1,
-                    len(seleccionados)
-                ):
-
-                    par = tuple(
-                        sorted([
-                            seleccionados[i],
-                            seleccionados[j]
-                        ])
-                    )
-
-                    if par not in st.session_state.conexiones_red:
-
-                        st.session_state.conexiones_red.append(
-                            par
-                        )
-
-            st.success(
-                "Conexiones creadas."
-            )
-
-
-if st.session_state.conexiones_red:
-
-    st.markdown(
-        "### Mapa de relaciones activas"
-    )
-
-    for origen, destino in st.session_state.conexiones_red:
-
-        st.write(
-            f"🔗 {origen} ↔ {destino}"
-        )
-
-    if st.button(
-        "Limpiar red de conexiones"
-    ):
-
-        st.session_state.conexiones_red = []
-        st.rerun()
-
-
-# ==========================================
 # HISTORIAL
 # ==========================================
 
@@ -847,5 +751,3 @@ if not st.session_state.historial:
     st.caption(
         "Aún no hay consultas."
     )
-
-
