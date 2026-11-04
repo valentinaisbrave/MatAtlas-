@@ -1,6 +1,7 @@
 
 import io
 import time
+import requests
 
 import streamlit as st
 from google import genai
