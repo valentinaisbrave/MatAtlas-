@@ -17,11 +17,9 @@ except Exception as e:
 def pipeline_text_generation(texto_usuario):
     """Pipeline para procesar y enriquecer texto."""
     prompt = f"Actua como un experto en construccion. Analiza y dame un nombre corto del material junto con su contexto tecnico principal: {texto_usuario}"
-    # Usamos extra_body para pasar la temperatura sin romper la funcion create()
     interaction = client.interactions.create(
         model="gemini-3.8-flash",
-        input=prompt,
-        extra_body={"temperature": 0.4}
+        input=prompt
     )
     return interaction.output_text.strip()
 
@@ -29,8 +27,7 @@ def pipeline_image_to_text(imagen_cargada):
     """Pipeline multimodal para extraer texto y contexto de imagenes."""
     interaction = client.interactions.create(
         model="gemini-3.8-flash",
-        input=["Identifica este material de construccion en la imagen. Dame un nombre corto y su contexto tecnico resumido.", imagen_cargada],
-        extra_body={"temperature": 0.4}
+        input=["Identifica este material de construccion en la imagen. Dame un nombre corto y su contexto tecnico resumido.", imagen_cargada]
     )
     return interaction.output_text.strip()
 
