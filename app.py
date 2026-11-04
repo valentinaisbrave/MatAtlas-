@@ -6,12 +6,30 @@ from PIL import Image
 # 1. Configuracion de la pagina
 st.set_page_config(page_title="Buscador y Red de Materiales con IA", layout="wide")
 
-# 2. Instanciar el cliente con la nueva libreria oficial
+# 2. Instanciar el cliente
 try:
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 except Exception as e:
     st.error("Verifica la clave GEMINI_API_KEY en los secretos de Streamlit.")
     client = None
+
+# --- PIPELINES DE IA ---
+def pipeline_text_generation(texto_usuario):
+    """Pipeline para procesar y enriquecer texto."""
+    prompt = f"Actua como un experto en construccion. Analiza y dame un nombre corto del material junto con su contexto tecnico principal: {texto_usuario}"
+    interaction = client.interactions.create(
+        model="gemini-3.8-flash",
+        input=prompt
+    )
+    return interaction.output_text.strip()
+
+def pipeline_image_to_text(imagen_cargada):
+    """Pipeline multimodal para extraer texto y contexto de imagenes."""
+    interaction = client.interactions.create(
+        model="gemini-3.8-flash",
+        input=["Identifica este material de construccion en la imagen. Dame un nombre corto y su contexto tecnico resumido.", imagen_cargada]
+    )
+    return interaction.output_text.strip()
 
 # Inicializar estructuras en la sesion
 if "materiales_encontrados" not in st.session_state:
@@ -21,7 +39,7 @@ if "historial" not in st.session_state:
 if "conexiones_red" not in st.session_state:
     st.session_state.conexiones_red = []
 
-# --- BLOQUE 1: TEXTO Y BARRA DE BUSQUEDA CENTRADOS ---
+# --- BLOQUE 1: INTERFAZ DE BUSQUEDA ---
 col_izq, col_centro, col_der = st.columns([1, 2, 1])
 
 with col_centro:
@@ -35,17 +53,9 @@ with col_centro:
         busqueda_texto = st.text_input("Escribe sobre el material que buscas:", key="input_busqueda_centro")
         if st.button("Analizar con IA (Texto)", key="btn_ia_texto") and client:
             if busqueda_texto:
-                with st.spinner("La IA esta analizando el contexto..."):
+                with st.spinner("Ejecutando pipeline de texto..."):
                     try:
-                        prompt = f"Actua como un experto en construccion. Analiza y dame un nombre corto del material junto con su contexto tecnico principal: {busqueda_texto}"
-                        
-                        # Uso de la sintaxis requerida para gemini-3.8-flash con temperatura
-                        interaction = client.interactions.create(
-                            model="gemini-3.8-flash",
-                            input=prompt,
-                            config={"temperature": 0.7}
-                        )
-                        resultado_ia = interaction.output_text.strip()
+                        resultado_ia = pipeline_text_generation(busqueda_texto)
                         
                         if resultado_ia not in st.session_state.materiales_encontrados:
                             st.session_state.materiales_encontrados.append(resultado_ia)
@@ -54,9 +64,9 @@ with col_centro:
                         if termino not in st.session_state.historial:
                             st.session_state.historial.insert(0, termino)
                             
-                        st.success("Analisis de texto completado.")
+                        st.success("Pipeline de texto completado.")
                     except Exception as e:
-                        st.error(f"Ocurrio un error al conectar con la IA: {e}")
+                        st.error(f"Error en el pipeline de texto: {e}")
 
     with pestana_foto:
         archivo_imagen = st.file_uploader("Sube una foto del material:", type=["jpg", "jpeg", "png"], key="uploader_foto_centro")
@@ -65,15 +75,9 @@ with col_centro:
             st.image(img, caption="Imagen cargada para analisis", width=250)
             
             if st.button("Analizar con IA (Foto)", key="btn_ia_foto") and client:
-                with st.spinner("La IA esta procesando la imagen..."):
+                with st.spinner("Ejecutando pipeline de imagen..."):
                     try:
-                        # Envio de texto e imagen en el input usando la nueva API
-                        interaction = client.interactions.create(
-                            model="gemini-3.8-flash",
-                            input=["Identifica este material de construccion en la imagen. Dame un nombre corto y su contexto tecnico resumido.", img],
-                            config={"temperature": 0.7}
-                        )
-                        resultado_ia = interaction.output_text.strip()
+                        resultado_ia = pipeline_image_to_text(img)
                         
                         if resultado_ia not in st.session_state.materiales_encontrados:
                             st.session_state.materiales_encontrados.append(resultado_ia)
@@ -82,13 +86,13 @@ with col_centro:
                         if termino not in st.session_state.historial:
                             st.session_state.historial.insert(0, termino)
                             
-                        st.success("Analisis de imagen completado.")
+                        st.success("Pipeline de imagen completado.")
                     except Exception as e:
-                        st.error(f"Ocurrio un error al procesar la imagen con la IA: {e}")
+                        st.error(f"Error en el pipeline de imagen: {e}")
 
 st.markdown("---")
 
-# --- BLOQUE 2: RESULTADOS Y CONTEXTO ENCONTRADO POR LA IA ---
+# --- BLOQUE 2: RESULTADOS ---
 st.subheader("Contexto y Materiales Encontrados por la IA")
 
 if st.session_state.materiales_encontrados:
