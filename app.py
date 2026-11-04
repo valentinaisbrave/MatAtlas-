@@ -11,11 +11,8 @@ except Exception as e:
     st.error("Verifica la clave GEMINI_API_KEY en los secretos de Streamlit.")
     client = None
 
-# --- OPTIMIZACION 3: CACHE PARA EVITAR LLAMADAS REPETIDAS ---
-@st.cache_data(show_spinner=False)
 def pipeline_text_generation(texto_usuario):
     """Pipeline optimizado con limites estrictos de generacion."""
-    # OPTIMIZACION 1: Prompt restrictivo
     prompt = f"Identifica este material de construccion: '{texto_usuario}'. Responde estrictamente con el nombre y maximo 15 palabras de contexto tecnico. Cero introducciones."
     
     try:
@@ -35,7 +32,6 @@ def pipeline_text_generation(texto_usuario):
 
 def pipeline_image_to_text(imagen_cargada):
     """Pipeline multimodal con limites estrictos."""
-    # OPTIMIZACION 1: Prompt restrictivo
     prompt = ["Identifica el material de construccion de esta imagen. Responde estrictamente con el nombre y maximo 15 palabras de contexto tecnico. Cero introducciones.", imagen_cargada]
     
     try:
@@ -92,10 +88,7 @@ with col_centro:
         archivo_imagen = st.file_uploader("Sube una foto del material:", type=["jpg", "jpeg", "png"], key="uploader_foto_centro")
         if archivo_imagen is not None:
             img = Image.open(archivo_imagen)
-            
-            # OPTIMIZACION 2: Compresion de imagen antes de enviarla a la API
             img.thumbnail((800, 800)) 
-            
             st.image(img, caption="Imagen optimizada para analisis", width=250)
             
             if st.button("Analizar con IA (Foto)", key="btn_ia_foto") and client:
