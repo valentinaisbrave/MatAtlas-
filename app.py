@@ -1,703 +1,266 @@
-
 import io
+import re
 import time
 import requests
-
 import streamlit as st
 from google import genai
 from google.genai import types
 from PIL import Image, ImageOps
 
+st.set_page_config(page_title="MAT(R)IZ", page_icon="🧱", layout="wide")
 
-# ==========================================
-# CONFIGURACION GENERAL
-# ==========================================
+MODELO_PRINCIPAL = "gemini-3.5-flash-lite"
+MODELO_RESPALDO = "gemini-3.8-flash"
 
-st.set_page_config(
-    page_title="MAT(R)IZ",
-    page_icon="🧱",
-    layout="wide"
-)
-
-MODELO_PRINCIPAL = "gemini-3.8-flash-lite"
-MODELO_RESPALDO = "gemini-3.6-flash"
-
-
-
-INSTRUCCIONES = """
-Eres MAT(R)IZ, un investigador especializado en
-historia de los materiales, arte, arquitectura y diseño.
-
-Tu tarea es elaborar una ficha de investigación
-sobre el material que proporciona el usuario.
-
-Responde SIEMPRE en español.
-
-Comienza obligatoriamente con:
-MATERIAL: [nombre del material]
-
-Desarrolla las siguientes secciones:
-
+INSTRUCCIONES = """Eres MAT(R)IZ, especialista en materiales, historia, arte y arquitectura.
+Responde EXCLUSIVAMENTE en español. Crea fichas completas, claras y rigurosas.
+Usa este formato Markdown, sin introducciones adicionales:
+MATERIAL: nombre concreto del material
 ### 01. Identificación y características
-Explica qué es el material, su composición,
-su origen y sus propiedades físicas y estéticas.
-
+Describe composición, propiedades, textura y usos.
 ### 02. Historia y evolución
-Explica cómo surgió, qué civilizaciones lo
-utilizaron y cómo evolucionó su empleo a través
-de los siglos. Incluye fechas relevantes.
-
+Explica origen, civilizaciones, hitos y fechas fiables.
 ### 03. Arte y arquitectura
-Presenta al menos dos referentes reales,
-incluyendo obras, artistas, arquitectos o
-movimientos artísticos. Explica cómo se
-utiliza el material en cada referente.
-
+Incluye dos obras, autores o movimientos reales, con fechas aproximadas y su relación con el material.
 ### 04. Aplicaciones contemporáneas
-Explica sus usos actuales en el arte,
-el diseño, la arquitectura y la construcción.
-
+Describe usos actuales en construcción, diseño y artes.
 ### 05. Valor cultural y simbólico
-Explica sus asociaciones estéticas,
-sociales o culturales, cuando corresponda.
-
-REGLAS:
-- Escribe explicaciones completas y desarrolladas.
-- Busca una extensión aproximada de 300 a 450 palabras.
-- No incluyas cálculos de palabras.
-- No muestres razonamientos internos.
-- No escribas comentarios sobre estas instrucciones.
-- No inventes hechos, obras, artistas ni fechas.
-- Reconoce cuando no exista información suficiente.
-- Si hay incertidumbre sobre la identificación,
-  indícalo expresamente.
-- Empieza inmediatamente con el nombre del material.
+Explica el valor estético o social del material.
+Extensión orientativa: 300 a 450 palabras en total. No cuentes palabras, no muestres razonamientos ni instrucciones.
+No inventes autores, obras ni fechas. Cuando no estés seguro, dilo. Si una foto es ambigua, indícalo.
 """
 
-
-
-# ==========================================
-# CONEXION CON GEMINI
-# ==========================================
-
 @st.cache_resource
-def obtener_cliente(api_key):
-    return genai.Client(
-        api_key=api_key,
-        http_options=types.HttpOptions(
-            timeout=20000
-        )
-    )
-
+def obtener_cliente(clave):
+    return genai.Client(api_key=clave, http_options=types.HttpOptions(timeout=30000))
 
 try:
-    api_key = st.secrets["GEMINI_API_KEY"]
-    client = obtener_cliente(api_key)
+    client = obtener_cliente(st.secrets["GEMINI_API_KEY"])
 except Exception:
     client = None
-    st.error(
-        "No se pudo configurar Gemini. "
-        "Revisa GEMINI_API_KEY en Streamlit Secrets."
-    )
+    st.error("Falta GEMINI_API_KEY en los Secrets de Streamlit.")
 
-
-# ==========================================
-# FUNCION GENERAL DE INTELIGENCIA ARTIFICIAL
-# ==========================================
 
 def consultar_gemini(contenido):
     if client is None:
-        raise RuntimeError(
-            "La conexion con Gemini no esta configurada."
-        )
+        raise RuntimeError("No se ha configurado GEMINI_API_KEY.")
 
-  configuracion = types.GenerateContentConfig(
-    system_instruction=INSTRUCCIONES,
-    temperature=0.3,
-    max_output_tokens=3000,
-    thinking_config=types.ThinkingConfig(
-        thinking_level="MINIMAL"
+    configuracion = types.GenerateContentConfig(
+        system_instruction=INSTRUCCIONES,
+        temperature=0.3,
+        max_output_tokens=3500,
     )
-)
-    )
-
     try:
         respuesta = client.models.generate_content(
-            model=MODELO_PRINCIPAL,
-            contents=contenido,
-            config=configuracion
+            model=MODELO_PRINCIPAL, contents=contenido, config=configuracion
         )
-
     except Exception as error:
         mensaje = str(error).lower()
-
-        # Solo cambiar de modelo cuando el error
-        # parece relacionado con disponibilidad.
-        if any(codigo in mensaje for codigo in
-               ["503", "unavailable", "404", "not found"]):
-
+        if any(x in mensaje for x in ("503", "unavailable", "404", "not found")):
             respuesta = client.models.generate_content(
-                model=MODELO_RESPALDO,
-                contents=contenido,
-                config=configuracion
+                model=MODELO_RESPALDO, contents=contenido, config=configuracion
             )
         else:
             raise
 
-    if not respuesta.text or not respuesta.text.strip():
-        raise RuntimeError(
-            "Gemini no devolvio una respuesta de texto."
-        )
-
-    return respuesta.text.strip()
+    texto = (respuesta.text or "").strip()
+    if not texto:
+        raise RuntimeError("Gemini no devolvió contenido de texto.")
+    return texto
 
 
-# ==========================================
-# PIPELINE DE TEXTO
-# ==========================================
-
-def pipeline_text_generation(texto_usuario):
-
-    prompt = (
-        "Identifica el siguiente material de construccion "
-        "y explica brevemente sus propiedades: "
-        f"{texto_usuario}"
+def pipeline_text_generation(texto):
+    return consultar_gemini(
+        f"Investiga el siguiente material y desarrolla TODAS las secciones de la ficha: {texto}"
     )
 
-    return consultar_gemini(prompt)
-
-
-# ==========================================
-# OPTIMIZACION DE IMAGEN
-# ==========================================
 
 def optimizar_imagen(imagen):
-
-    imagen = ImageOps.exif_transpose(imagen)
-    imagen = imagen.convert("RGB")
-
-    # Reducimos el tamaño para acelerar el envio.
+    imagen = ImageOps.exif_transpose(imagen).convert("RGB")
     imagen.thumbnail((768, 768))
-
     buffer = io.BytesIO()
-
-    imagen.save(
-        buffer,
-        format="JPEG",
-        quality=75,
-        optimize=True
-    )
-
+    imagen.save(buffer, format="JPEG", quality=75, optimize=True)
     return buffer.getvalue()
 
 
-# ==========================================
-# PIPELINE DE IMAGEN
-# ==========================================
-
 def pipeline_image_to_text(imagen):
-
-    imagen_bytes = optimizar_imagen(imagen)
-
     contenido = [
-        types.Part.from_bytes(
-            data=imagen_bytes,
-            mime_type="image/jpeg"
-        ),
-        (
-            "Identifica el principal material de "
-            "construccion visible en esta fotografia. "
-            "Responde en español y explica brevemente "
-            "sus caracteristicas tecnicas."
-        )
+        types.Part.from_bytes(data=optimizar_imagen(imagen), mime_type="image/jpeg"),
+        "Identifica el material principal de la fotografía y desarrolla TODAS las secciones de la ficha. Si es dudoso, acláralo.",
     ]
-
     return consultar_gemini(contenido)
 
 
-# ==========================================
-# MANEJO DE ERRORES
-# ==========================================
+def extraer_nombre_material(resultado):
+    coincidencia = re.search(r"(?im)^\s*(?:\*\*)?MATERIAL\s*:\s*(.+)$", resultado)
+    if coincidencia:
+        return coincidencia.group(1).replace("**", "").strip()[:90]
+    return "Material por identificar"
 
-def mostrar_error(error):
-
-    mensaje = str(error)
-    mensaje_lower = mensaje.lower()
-
-    if "429" in mensaje_lower or "resource_exhausted" in mensaje_lower:
-        st.error(
-            "Se alcanzo el limite de solicitudes de Gemini. "
-            "Revisa la cuota de tu API."
-        )
-
-    elif "403" in mensaje_lower or "401" in mensaje_lower:
-        st.error(
-            "Gemini rechazo la solicitud. "
-            "Verifica los permisos y la clave API."
-        )
-
-    elif "timeout" in mensaje_lower or "timed out" in mensaje_lower:
-        st.error(
-            "Gemini supero el tiempo de espera. "
-            "Intenta nuevamente."
-        )
-
-    elif "503" in mensaje_lower:
-        st.error(
-            "El servicio de Gemini esta temporalmente "
-            "sobrecargado."
-        )
-
-    else:
-        st.error(f"Error durante el analisis: {mensaje}")
-
-
-# ==========================================
-# VARIABLES DE SESION
-# ==========================================
-if "nombres_materiales" not in st.session_state:
-    st.session_state.nombres_materiales = {}
-    
-if "materiales_encontrados" not in st.session_state:
-    st.session_state.materiales_encontrados = []
-
-if "historial" not in st.session_state:
-    st.session_state.historial = []
-
-if "conexiones_red" not in st.session_state:
-    st.session_state.conexiones_red = []
-
-
-def guardar_resultado(resultado, consulta, nombre_material):
-
-    if resultado not in st.session_state.materiales_encontrados:
-        st.session_state.materiales_encontrados.append(resultado)
-
-    st.session_state.nombres_materiales[resultado] = nombre_material
-
-    st.session_state.historial.insert(0, consulta)
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def buscar_foto_material(nombre_material):
-
-    # Sustituye esta URL por la de tu repositorio publico.
-    identificacion = (
-        "MatrizApp/1.0 "
-        "(https://github.com/tu-usuario/tu-repositorio)"
-    )
-
-    parametros = {
-        "action": "query",
-        "generator": "search",
-        "gsrsearch": nombre_material + " material texture",
-        "gsrnamespace": 6,
-        "gsrlimit": 8,
-        "prop": "imageinfo",
-        "iiprop": "url|mime|extmetadata",
-        "iiurlwidth": 320,
-        "iiextmetadatafilter": "LicenseShortName",
-        "format": "json"
+def buscar_foto_material(nombre):
+    equivalencias = {
+        "madera": "wood texture", "ladrillo": "red brick masonry",
+        "hormigón": "concrete texture", "hormigon": "concrete texture",
+        "hormigón armado": "reinforced concrete", "concreto": "concrete texture",
+        "acero": "steel material", "vidrio": "glass material",
+        "mármol": "marble stone texture", "marmol": "marble stone texture",
+        "piedra": "natural stone", "cerámica": "ceramic tiles",
+        "ceramica": "ceramic tiles", "bambú": "bamboo material",
+        "adobe": "adobe bricks", "yeso": "plaster material",
     }
-
+    consulta = equivalencias.get(nombre.lower().strip(), nombre)
+    parametros = {
+        "action": "query", "generator": "search", "gsrsearch": consulta,
+        "gsrnamespace": 6, "gsrlimit": 12, "prop": "imageinfo",
+        "iiprop": "url|mime|extmetadata", "iiurlwidth": 320,
+        "iiextmetadatafilter": "LicenseShortName", "format": "json",
+    }
     try:
         respuesta = requests.get(
             "https://commons.wikimedia.org/w/api.php",
             params=parametros,
-            headers={"User-Agent": identificacion},
-            timeout=5
+            headers={"User-Agent": "MatrizEducationalApp/1.0 (Streamlit; educational material reference search)"},
+            timeout=8,
         )
-
         respuesta.raise_for_status()
-        datos = respuesta.json()
-
-        paginas = datos.get("query", {}).get("pages", {})
-
+        paginas = respuesta.json().get("query", {}).get("pages", {})
         for pagina in paginas.values():
-            imagenes = pagina.get("imageinfo", [])
-
-            if not imagenes:
-                continue
-
-            info = imagenes[0]
-
-            if not info.get("mime", "").startswith("image/"):
-                continue
-
-            miniatura = info.get("thumburl")
-
-            if miniatura:
-                licencia = info.get(
-                    "extmetadata", {}
-                ).get("LicenseShortName", {}).get("value", "")
-
-                return {
-                    "url": miniatura,
-                    "fuente": info.get("descriptionurl", ""),
-                    "licencia": licencia
-                }
-
-    except requests.RequestException:
-        pass
-    except ValueError:
-        pass
-
-    return None
+            for foto in pagina.get("imageinfo", []):
+                if foto.get("mime", "").startswith("image/") and foto.get("thumburl"):
+                    licencia = foto.get("extmetadata", {}).get("LicenseShortName", {}).get("value", "")
+                    return {"url": foto["thumburl"], "fuente": foto.get("descriptionurl", ""), "licencia": licencia}, None
+        return None, f"No se encontraron imágenes para «{consulta}»."
+    except (requests.RequestException, ValueError) as error:
+        return None, f"La búsqueda de imágenes falló: {error}"
 
 
-def extraer_nombre_material(resultado):
-    primera_linea = resultado.splitlines()[0].strip()
+def mostrar_error(error):
+    mensaje = str(error)
+    if "429" in mensaje or "RESOURCE_EXHAUSTED" in mensaje:
+        st.error("Se alcanzó el límite de solicitudes de Gemini. Revisa tu cuota.")
+    elif "401" in mensaje or "403" in mensaje:
+        st.error("La API rechazó la solicitud. Revisa la clave y sus permisos.")
+    elif "timeout" in mensaje.lower() or "timed out" in mensaje.lower():
+        st.error("Gemini tardó demasiado en responder. Inténtalo nuevamente.")
+    else:
+        st.error(f"Error: {mensaje}")
 
-    if primera_linea.upper().startswith("MATERIAL:"):
-        return primera_linea.split(":", 1)[1].strip()
 
-    return primera_linea[:80]
+for variable, valor in {
+    "materiales_encontrados": [], "historial": [], "conexiones_red": [],
+}.items():
+    if variable not in st.session_state:
+        st.session_state[variable] = valor
 
 
-# ==========================================
-# INTERFAZ PRINCIPAL
-# ==========================================
+def guardar_resultado(resultado, consulta, nombre):
+    nombres = [m["nombre"] for m in st.session_state.materiales_encontrados]
+    if nombre not in nombres:
+        st.session_state.materiales_encontrados.append({"nombre": nombre, "texto": resultado})
+    else:
+        indice = nombres.index(nombre)
+        st.session_state.materiales_encontrados[indice]["texto"] = resultado
+    st.session_state.historial.insert(0, consulta)
+
 
 col_izq, col_centro, col_der = st.columns([1, 2, 1])
-
 with col_centro:
-
-    st.markdown(
-        "<h1 style='text-align:center;'>MAT(R)IZ</h1>",
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        "<p style='text-align:center;'>"
-        "Explora, identifica y conecta materiales "
-        "de construccion con inteligencia artificial."
-        "</p>",
-        unsafe_allow_html=True
-    )
-
-    pestana_texto, pestana_foto = st.tabs([
-        "Buscar por texto",
-        "Buscar por foto"
-    ])
-
-    # ======================================
-    # BUSQUEDA POR TEXTO
-    # ======================================
+    st.markdown("<h1 style='text-align:center;'>MAT(R)IZ</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center;'>Explora materiales, arte, historia y arquitectura.</p>", unsafe_allow_html=True)
+    pestana_texto, pestana_foto = st.tabs(["Buscar por texto", "Buscar por foto"])
 
     with pestana_texto:
-
-        busqueda_texto = st.text_input(
-            "Escribe el material que deseas analizar:",
-            placeholder="Ejemplo: hormigon, madera, acero..."
-        )
-
-        if st.button(
-            "Analizar con IA (Texto)",
-            type="primary",
-            disabled=client is None
-        ):
-
+        busqueda_texto = st.text_input("¿Qué material quieres investigar?", placeholder="Ejemplo: ladrillo")
+        if st.button("Analizar con IA (Texto)", type="primary", disabled=client is None):
             if not busqueda_texto.strip():
-                st.warning("Escribe un material primero.")
-
+                st.warning("Escribe el nombre de un material.")
             else:
-                with st.spinner("Identificando material..."):
-
+                with st.spinner("Investigando el material..."):
                     inicio = time.perf_counter()
-
                     try:
-                        resultado = pipeline_text_generation(
-                             resultado,
-    f"Texto: {busqueda_texto}",
-    busqueda_texto.strip()
-                        )
-guardar_resultado(
-    resultado,
-    f"Foto: {archivo_imagen.name}",
-    extraer_nombre_material(resultado)
-)
-                        def guardar_resultado(resultado, consulta, nombre_material):
-
-    if resultado not in st.session_state.materiales_encontrados:
-        st.session_state.materiales_encontrados.append(resultado)
-
-    st.session_state.nombres_materiales[resultado] = nombre_material
-
-    st.session_state.historial.insert(0, consulta)
-                        
-
-                        duracion = time.perf_counter() - inicio
-
+                        resultado = pipeline_text_generation(busqueda_texto.strip())
+                        guardar_resultado(resultado, f"Texto: {busqueda_texto}", busqueda_texto.strip())
                         st.success("Material identificado.")
-                        st.info(resultado)
-                        st.caption(
-                            f"Tiempo de respuesta: {duracion:.2f} s"
-                        )
-
+                        st.caption(f"Tiempo: {time.perf_counter() - inicio:.1f} s")
                     except Exception as error:
                         mostrar_error(error)
 
-    # ======================================
-    # BUSQUEDA POR FOTOGRAFIA
-    # ======================================
-
     with pestana_foto:
-
-        archivo_imagen = st.file_uploader(
-            "Sube una fotografia:",
-            type=["jpg", "jpeg", "png"]
-        )
-
-        if archivo_imagen is not None:
-
+        archivo = st.file_uploader("Sube una fotografía", type=["jpg", "jpeg", "png"])
+        if archivo is not None:
             try:
-                imagen = Image.open(archivo_imagen)
-
-                st.image(
-                    imagen,
-                    caption="Imagen seleccionada",
-                    width=250
-                )
-
-                if st.button(
-                    "Analizar con IA (Foto)",
-                    type="primary",
-                    disabled=client is None
-                ):
-
-                    with st.spinner("Analizando imagen..."):
-
+                imagen = Image.open(archivo)
+                st.image(imagen, caption="Fotografía seleccionada", width=250)
+                if st.button("Analizar con IA (Foto)", type="primary", disabled=client is None):
+                    with st.spinner("Identificando material de la fotografía..."):
                         inicio = time.perf_counter()
-
                         try:
-                            resultado = pipeline_image_to_text(
-                                imagen
-                            )
-
-                            guardar_resultado(
-                                resultado,
-                                f"Foto: {archivo_imagen.name}"
-                            )
-
-                            duracion = time.perf_counter() - inicio
-
-                            st.success("Imagen analizada.")
-                            st.info(resultado)
-                            st.caption(
-                                f"Tiempo de respuesta: {duracion:.2f} s"
-                            )
-
+                            resultado = pipeline_image_to_text(imagen)
+                            nombre = extraer_nombre_material(resultado)
+                            guardar_resultado(resultado, f"Foto: {archivo.name}", nombre)
+                            st.success("Fotografía analizada.")
+                            st.caption(f"Tiempo: {time.perf_counter() - inicio:.1f} s")
                         except Exception as error:
                             mostrar_error(error)
-
-            except Exception as error:
-                st.error(f"Error al abrir la imagen: {error}")
-
-
-# ==========================================
-# MATERIALES ENCONTRADOS
-# ==========================================
+            except (OSError, ValueError) as error:
+                st.error(f"No se pudo abrir la fotografía: {error}")
 
 st.divider()
-
 st.subheader("Archivo de materiales MAT(R)IZ")
-
 materiales = st.session_state.materiales_encontrados
 
 if materiales:
-
-    for indice, material in enumerate(materiales):
-
+    for indice, material in enumerate(materiales, start=1):
         with st.container(border=True):
-
-            st.caption(f"FICHA {indice + 1:03d}")
-
-            nombre = extraer_nombre_material(material)
-
-            columna_foto, columna_texto = st.columns(
-                [1, 2],
-                gap="large"
-            )
-
+            st.caption(f"FICHA {indice:03d} — {material['nombre']}")
+            columna_foto, columna_texto = st.columns([1, 2], gap="large")
             with columna_foto:
-
-              
-
-with columna_foto:
-
-    nombre = st.session_state.nombres_materiales.get(
-        material,
-        extraer_nombre_material(material)
-    )
-
-    fotografia, error_foto = buscar_foto_material(nombre)
-
-    if fotografia:
-
-        st.image(
-            fotografia["url"],
-            width="stretch",
-            caption=f"Material: {nombre}"
-        )
-
-        if fotografia["fuente"]:
-            st.markdown(
-                f"[Ver fotografía y atribución]"
-                f"({fotografia['fuente']})"
-            )
-
-        if fotografia["licencia"]:
-            st.caption(
-                f"Licencia: {fotografia['licencia']}"
-            )
-
-    else:
-        st.caption(
-            "No se encontró fotografía de referencia."
-        )
-
-        if error_foto:
-            st.warning(error_foto)
-
-
-    nombre = nombre_material.strip().lower()
-    consulta = traducciones.get(nombre, nombre_material)
-
-    url_api = "https://commons.wikimedia.org/w/api.php"
-
-    parametros = {
-        "action": "query",
-        "generator": "search",
-        "gsrsearch": consulta,
-        "gsrnamespace": 6,
-        "gsrlimit": 12,
-        "prop": "imageinfo",
-        "iiprop": "url|mime|extmetadata",
-        "iiurlwidth": 320,
-        "iiextmetadatafilter": "LicenseShortName",
-        "format": "json"
-    }
-
-    try:
-        respuesta = requests.get(
-            url_api,
-            params=parametros,
-            headers={
-                "User-Agent": (
-                    "MatrizApp/1.0 "
-                    "(https://github.com/tu-usuario/tu-repositorio)"
-                )
-            },
-            timeout=8
-        )
-
-        respuesta.raise_for_status()
-        datos = respuesta.json()
-
-        paginas = datos.get("query", {}).get("pages", {})
-
-        for pagina in paginas.values():
-
-            for info in pagina.get("imageinfo", []):
-
-                if not info.get("mime", "").startswith("image/"):
-                    continue
-
-                if info.get("thumburl"):
-
-                    licencia = info.get(
-                        "extmetadata", {}
-                    ).get("LicenseShortName", {}).get("value", "")
-
-                    return {
-                        "url": info["thumburl"],
-                        "fuente": info.get("descriptionurl", ""),
-                        "licencia": licencia
-                    }, None
-
-        return None, (
-            f"No se encontraron imágenes para: {consulta}"
-        )
-
-    except requests.RequestException as error:
-        return None, f"Error de Wikimedia: {error}"
-
-    except ValueError as error:
-        return None, f"Respuesta inválida: {error}"
-
-
+                foto, error_foto = buscar_foto_material(material["nombre"])
+                if foto:
+                    st.image(foto["url"], caption="Fotografía de referencia", width="stretch")
+                    if foto["fuente"]:
+                        st.markdown(f"[Ver fuente y atribución]({foto['fuente']})")
+                    if foto["licencia"]:
+                        st.caption(f"Licencia: {foto['licencia']}")
+                else:
+                    st.caption("No se encontró una fotografía de referencia.")
+                    if error_foto:
+                        st.caption(error_foto)
             with columna_texto:
-
-                st.markdown(material)
-
+                st.markdown(material["texto"])
 else:
-    st.info(
-        "Todavía no hay materiales analizados. "
-        "Realiza una búsqueda para comenzar."
-    )
-
-# ==========================================
-# CONEXIONES ENTRE MATERIALES
-# ==========================================
+    st.info("Todavía no hay materiales analizados.")
 
 st.divider()
-
 st.subheader("Haz tus propias conexiones entre materiales")
-
 if materiales:
-
-    seleccionados = st.multiselect(
-        "Selecciona los materiales que deseas conectar:",
-        options=materiales
-    )
-
+    seleccionados = st.multiselect("Selecciona al menos dos materiales:", options=[m["nombre"] for m in materiales])
     if st.button("Crear red de conexiones"):
-
         if len(seleccionados) < 2:
-
-            st.warning(
-                "Selecciona al menos dos materiales."
-            )
-
+            st.warning("Selecciona al menos dos materiales.")
         else:
-
             for i in range(len(seleccionados)):
                 for j in range(i + 1, len(seleccionados)):
-
-                    par = tuple(sorted([
-                        seleccionados[i],
-                        seleccionados[j]
-                    ]))
-
+                    par = tuple(sorted([seleccionados[i], seleccionados[j]]))
                     if par not in st.session_state.conexiones_red:
                         st.session_state.conexiones_red.append(par)
-
-            st.success("Conexiones creadas correctamente.")
-
+            st.success("Conexiones creadas.")
 
 if st.session_state.conexiones_red:
-
     st.markdown("### Mapa de relaciones activas")
-
-    for material_a, material_b in st.session_state.conexiones_red:
-        st.write(f"🔗 {material_a} ↔ {material_b}")
-
+    for origen, destino in st.session_state.conexiones_red:
+        st.write(f"🔗 {origen} ↔ {destino}")
     if st.button("Limpiar red de conexiones"):
         st.session_state.conexiones_red = []
         st.rerun()
 
-
-# ==========================================
-# HISTORIAL
-# ==========================================
-
 st.divider()
-
 st.subheader("Historial de consultas")
+for consulta in st.session_state.historial[:5]:
+    st.write(f"• {consulta}")
+if not st.session_state.historial:
+    st.caption("Aún no hay consultas.")
 
-if st.session_state.historial:
 
-    for consulta in st.session_state.historial[:5]:
-        st.write(f"• {consulta}")
-
-else:
-    st.caption("Todavia no hay consultas registradas.")
