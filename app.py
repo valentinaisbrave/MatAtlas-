@@ -41,8 +41,8 @@ with col_centro:
             if busqueda_texto:
                 with st.spinner("La IA esta analizando el contexto..."):
                     try:
-                        # Llamada real al modelo Gemini para extraer contexto
-                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        # CORRECCION: Usamos el modelo actual compatible con la libreria
+                        model = genai.GenerativeModel('gemini-2.5-flash')
                         prompt = f"Actua como un experto en construccion y materiales. Analiza el siguiente material o consulta y dame un nombre corto del material junto con su contexto tecnico principal: {busqueda_texto}"
                         response = model.generate_content(prompt)
                         
@@ -70,8 +70,8 @@ with col_centro:
             if st.button("Analizar con IA (Foto)", key="btn_ia_foto"):
                 with st.spinner("La IA esta procesando la imagen..."):
                     try:
-                        # Llamada real al modelo multimodal Gemini con la imagen
-                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        # CORRECCION: Usamos el modelo actual compatible con la libreria
+                        model = genai.GenerativeModel('gemini-2.5-flash')
                         response = model.generate_content([
                             "Identifica este material de construccion en la imagen. Dame un nombre corto y su contexto tecnico resumido.",
                             img
