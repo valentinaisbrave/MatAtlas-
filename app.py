@@ -23,56 +23,57 @@ MODELO_PRINCIPAL = "gemini-3.8-flash-lite"
 MODELO_RESPALDO = "gemini-3.6-flash"
 
 
+
 INSTRUCCIONES = """
-Eres MAT(R)IZ, una inteligencia artificial especializada
-en materiales, arte, arquitectura, diseño e historia.
+Eres MAT(R)IZ, un investigador especializado en
+historia de los materiales, arte, arquitectura y diseño.
 
-Responde siempre en español, con información clara,
-precisa, interesante y académica.
+Tu tarea es elaborar una ficha de investigación
+sobre el material que proporciona el usuario.
 
-Tu objetivo es crear una ficha cultural y técnica del
-material identificado.
+Responde SIEMPRE en español.
 
-ESTRUCTURA OBLIGATORIA:
+Comienza obligatoriamente con:
+MATERIAL: [nombre del material]
 
-Primera línea:
-MATERIAL: nombre del material
+Desarrolla las siguientes secciones:
 
-Después desarrolla estas secciones:
-
-### 01. Contexto técnico
+### 01. Identificación y características
 Explica qué es el material, su composición,
-sus propiedades físicas y sus aplicaciones.
-Extensión: entre 60 y 90 palabras.
+su origen y sus propiedades físicas y estéticas.
 
-### 02. Contexto histórico
-Explica el origen del material, su evolución,
-las civilizaciones o épocas que lo utilizaron
-y su importancia en la historia.
-Extensión: entre 70 y 100 palabras.
+### 02. Historia y evolución
+Explica cómo surgió, qué civilizaciones lo
+utilizaron y cómo evolucionó su empleo a través
+de los siglos. Incluye fechas relevantes.
 
-### 03. Referente artístico o arquitectónico
-Menciona al menos una obra, artista, arquitecto
-o movimiento que utilice el material.
-Incluye el nombre, la fecha aproximada
-y la relación del material con la obra.
-Extensión: entre 60 y 90 palabras.
+### 03. Arte y arquitectura
+Presenta al menos dos referentes reales,
+incluyendo obras, artistas, arquitectos o
+movimientos artísticos. Explica cómo se
+utiliza el material en cada referente.
 
 ### 04. Aplicaciones contemporáneas
-Explica cómo se utiliza actualmente en
-arquitectura, diseño, arte o construcción.
-Extensión: entre 40 y 60 palabras.
+Explica sus usos actuales en el arte,
+el diseño, la arquitectura y la construcción.
+
+### 05. Valor cultural y simbólico
+Explica sus asociaciones estéticas,
+sociales o culturales, cuando corresponda.
 
 REGLAS:
-- Responde exclusivamente en español.
-- No escribas introducciones ni despedidas.
-- Utiliza lenguaje técnico comprensible.
-- Prioriza referentes artísticos reales y verificables.
-- No inventes fechas, autores ni edificios.
-- Si desconoces un dato histórico, dilo claramente.
-- Si una imagen es ambigua, expresa la incertidumbre.
-- No agregues enlaces ni fotografías inventadas.
+- Escribe explicaciones completas y desarrolladas.
+- Busca una extensión aproximada de 300 a 450 palabras.
+- No incluyas cálculos de palabras.
+- No muestres razonamientos internos.
+- No escribas comentarios sobre estas instrucciones.
+- No inventes hechos, obras, artistas ni fechas.
+- Reconoce cuando no exista información suficiente.
+- Si hay incertidumbre sobre la identificación,
+  indícalo expresamente.
+- Empieza inmediatamente con el nombre del material.
 """
+
 
 
 # ==========================================
@@ -110,10 +111,14 @@ def consultar_gemini(contenido):
             "La conexion con Gemini no esta configurada."
         )
 
-    configuracion = types.GenerateContentConfig(
-        system_instruction=INSTRUCCIONES,
-        temperature=0.4,
-        max_output_tokens=1100
+  configuracion = types.GenerateContentConfig(
+    system_instruction=INSTRUCCIONES,
+    temperature=0.3,
+    max_output_tokens=3000,
+    thinking_config=types.ThinkingConfig(
+        thinking_level="MINIMAL"
+    )
+)
     )
 
     try:
@@ -250,7 +255,9 @@ def mostrar_error(error):
 # ==========================================
 # VARIABLES DE SESION
 # ==========================================
-
+if "nombres_materiales" not in st.session_state:
+    st.session_state.nombres_materiales = {}
+    
 if "materiales_encontrados" not in st.session_state:
     st.session_state.materiales_encontrados = []
 
@@ -261,10 +268,12 @@ if "conexiones_red" not in st.session_state:
     st.session_state.conexiones_red = []
 
 
-def guardar_resultado(resultado, consulta):
+def guardar_resultado(resultado, consulta, nombre_material):
 
     if resultado not in st.session_state.materiales_encontrados:
         st.session_state.materiales_encontrados.append(resultado)
+
+    st.session_state.nombres_materiales[resultado] = nombre_material
 
     st.session_state.historial.insert(0, consulta)
 
@@ -397,13 +406,24 @@ with col_centro:
 
                     try:
                         resultado = pipeline_text_generation(
-                            busqueda_texto.strip()
+                             resultado,
+    f"Texto: {busqueda_texto}",
+    busqueda_texto.strip()
                         )
+guardar_resultado(
+    resultado,
+    f"Foto: {archivo_imagen.name}",
+    extraer_nombre_material(resultado)
+)
+                        def guardar_resultado(resultado, consulta, nombre_material):
 
-                        guardar_resultado(
-                            resultado,
-                            f"Texto: {busqueda_texto}"
-                        )
+    if resultado not in st.session_state.materiales_encontrados:
+        st.session_state.materiales_encontrados.append(resultado)
+
+    st.session_state.nombres_materiales[resultado] = nombre_material
+
+    st.session_state.historial.insert(0, consulta)
+                        
 
                         duracion = time.perf_counter() - inicio
 
@@ -500,35 +520,110 @@ if materiales:
 
             with columna_foto:
 
-                fotografia = buscar_foto_material(nombre)
+              
 
-                if fotografia:
+with columna_foto:
 
-                    st.image(
-                        fotografia["url"],
-                        width="stretch"
-                    )
+    nombre = st.session_state.nombres_materiales.get(
+        material,
+        extraer_nombre_material(material)
+    )
 
-                    st.caption(
-                        "Fotografía de referencia"
-                    )
+    fotografia, error_foto = buscar_foto_material(nombre)
 
-                    if fotografia["fuente"]:
-                        st.markdown(
-                            f"[Ver autoría y licencia]"
-                            f"({fotografia['fuente']})"
-                        )
+    if fotografia:
 
-                    if fotografia["licencia"]:
-                        st.caption(
-                            f"Licencia: {fotografia['licencia']}"
-                        )
+        st.image(
+            fotografia["url"],
+            width="stretch",
+            caption=f"Material: {nombre}"
+        )
 
-                else:
-                    st.caption(
-                        "No se encontró una fotografía "
-                        "de referencia."
-                    )
+        if fotografia["fuente"]:
+            st.markdown(
+                f"[Ver fotografía y atribución]"
+                f"({fotografia['fuente']})"
+            )
+
+        if fotografia["licencia"]:
+            st.caption(
+                f"Licencia: {fotografia['licencia']}"
+            )
+
+    else:
+        st.caption(
+            "No se encontró fotografía de referencia."
+        )
+
+        if error_foto:
+            st.warning(error_foto)
+
+
+    nombre = nombre_material.strip().lower()
+    consulta = traducciones.get(nombre, nombre_material)
+
+    url_api = "https://commons.wikimedia.org/w/api.php"
+
+    parametros = {
+        "action": "query",
+        "generator": "search",
+        "gsrsearch": consulta,
+        "gsrnamespace": 6,
+        "gsrlimit": 12,
+        "prop": "imageinfo",
+        "iiprop": "url|mime|extmetadata",
+        "iiurlwidth": 320,
+        "iiextmetadatafilter": "LicenseShortName",
+        "format": "json"
+    }
+
+    try:
+        respuesta = requests.get(
+            url_api,
+            params=parametros,
+            headers={
+                "User-Agent": (
+                    "MatrizApp/1.0 "
+                    "(https://github.com/tu-usuario/tu-repositorio)"
+                )
+            },
+            timeout=8
+        )
+
+        respuesta.raise_for_status()
+        datos = respuesta.json()
+
+        paginas = datos.get("query", {}).get("pages", {})
+
+        for pagina in paginas.values():
+
+            for info in pagina.get("imageinfo", []):
+
+                if not info.get("mime", "").startswith("image/"):
+                    continue
+
+                if info.get("thumburl"):
+
+                    licencia = info.get(
+                        "extmetadata", {}
+                    ).get("LicenseShortName", {}).get("value", "")
+
+                    return {
+                        "url": info["thumburl"],
+                        "fuente": info.get("descriptionurl", ""),
+                        "licencia": licencia
+                    }, None
+
+        return None, (
+            f"No se encontraron imágenes para: {consulta}"
+        )
+
+    except requests.RequestException as error:
+        return None, f"Error de Wikimedia: {error}"
+
+    except ValueError as error:
+        return None, f"Respuesta inválida: {error}"
+
 
             with columna_texto:
 
