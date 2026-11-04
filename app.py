@@ -3,35 +3,53 @@ import streamlit as st
 from google import genai
 from PIL import Image
 
-# 1. Configuracion de la pagina
 st.set_page_config(page_title="MAT(R)IZ", layout="wide")
 
-# 2. Instanciar el cliente
 try:
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 except Exception as e:
     st.error("Verifica la clave GEMINI_API_KEY en los secretos de Streamlit.")
     client = None
 
-# --- PIPELINES DE IA ---
 def pipeline_text_generation(texto_usuario):
-    """Pipeline para procesar y enriquecer texto."""
+    """Pipeline con sistema de respaldo por alta demanda."""
     prompt = f"Actua como un experto en construccion. Analiza y dame un nombre corto del material junto con su contexto tecnico principal: {texto_usuario}"
-    interaction = client.interactions.create(
-        model="gemini-3.8-flash",
-        input=prompt
-    )
-    return interaction.output_text.strip()
+    
+    try:
+        interaction = client.interactions.create(
+            model="gemini-3.8-flash",
+            input=prompt
+        )
+        return interaction.output_text.strip()
+    except Exception as e:
+        if "503" in str(e) or "demand" in str(e).lower():
+            # Modelo de respaldo si los servidores 3.8 estan llenos
+            fallback = client.interactions.create(
+                model="gemini-1.5-flash",
+                input=prompt
+            )
+            return fallback.output_text.strip()
+        raise e
 
 def pipeline_image_to_text(imagen_cargada):
-    """Pipeline multimodal para extraer texto y contexto de imagenes."""
-    interaction = client.interactions.create(
-        model="gemini-3.8-flash",
-        input=["Identifica este material de construccion en la imagen. Dame un nombre corto y su contexto tecnico resumido.", imagen_cargada]
-    )
-    return interaction.output_text.strip()
+    """Pipeline multimodal con sistema de respaldo."""
+    prompt = ["Identifica este material de construccion en la imagen. Dame un nombre corto y su contexto tecnico resumido.", imagen_cargada]
+    
+    try:
+        interaction = client.interactions.create(
+            model="gemini-3.8-flash",
+            input=prompt
+        )
+        return interaction.output_text.strip()
+    except Exception as e:
+        if "503" in str(e) or "demand" in str(e).lower():
+            fallback = client.interactions.create(
+                model="gemini-1.5-flash",
+                input=prompt
+            )
+            return fallback.output_text.strip()
+        raise e
 
-# Inicializar estructuras en la sesion
 if "materiales_encontrados" not in st.session_state:
     st.session_state.materiales_encontrados = []
 if "historial" not in st.session_state:
@@ -39,7 +57,6 @@ if "historial" not in st.session_state:
 if "conexiones_red" not in st.session_state:
     st.session_state.conexiones_red = []
 
-# --- BLOQUE 1: INTERFAZ DE BUSQUEDA ---
 col_izq, col_centro, col_der = st.columns([1, 2, 1])
 
 with col_centro:
@@ -92,7 +109,6 @@ with col_centro:
 
 st.markdown("---")
 
-# --- BLOQUE 2: RESULTADOS ---
 st.subheader("Contexto y Materiales Encontrados por la IA")
 
 if st.session_state.materiales_encontrados:
@@ -103,7 +119,6 @@ else:
 
 st.markdown("---")
 
-# --- BLOQUE 3: RED DE BURBUJAS Y CONEXION MULTIPLE ---
 st.subheader("Haz tus propias conexiones entre materiales")
 
 if st.session_state.materiales_encontrados:
@@ -135,7 +150,6 @@ if st.session_state.conexiones_red:
 
 st.markdown("---")
 
-# --- HISTORIAL GENERAL ---
 st.subheader("Historial de Consultas")
 if st.session_state.historial:
     for h in st.session_state.historial[:5]:
