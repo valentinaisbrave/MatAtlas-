@@ -15,6 +15,11 @@ try:
 except Exception as e:
     st.error("No se encontro la clave de API configurada en los secretos de Streamlit.")
 
+# Configurar parametros de generacion (Temperatura a 0.7 para mayor creatividad)
+configuracion_generacion = genai.types.GenerationConfig(
+    temperature=0.7
+)
+
 # Inicializar estructuras en la sesion
 if "materiales_encontrados" not in st.session_state:
     st.session_state.materiales_encontrados = []
@@ -41,8 +46,11 @@ with col_centro:
             if busqueda_texto:
                 with st.spinner("La IA esta analizando el contexto..."):
                     try:
-                        # CORRECCION: Usamos el modelo actual compatible con la libreria
-                        model = genai.GenerativeModel('gemini-2.5-flash')
+                        # Inicializar el modelo especificando la temperatura en 0.7
+                        model = genai.GenerativeModel(
+                            model_name='gemini-1.5-flash',
+                            generation_config=configuracion_generacion
+                        )
                         prompt = f"Actua como un experto en construccion y materiales. Analiza el siguiente material o consulta y dame un nombre corto del material junto con su contexto tecnico principal: {busqueda_texto}"
                         response = model.generate_content(prompt)
                         
@@ -70,8 +78,11 @@ with col_centro:
             if st.button("Analizar con IA (Foto)", key="btn_ia_foto"):
                 with st.spinner("La IA esta procesando la imagen..."):
                     try:
-                        # CORRECCION: Usamos el modelo actual compatible con la libreria
-                        model = genai.GenerativeModel('gemini-2.5-flash')
+                        # Inicializar el modelo especificando la temperatura en 0.7
+                        model = genai.GenerativeModel(
+                            model_name='gemini-1.5-flash',
+                            generation_config=configuracion_generacion
+                        )
                         response = model.generate_content([
                             "Identifica este material de construccion en la imagen. Dame un nombre corto y su contexto tecnico resumido.",
                             img
