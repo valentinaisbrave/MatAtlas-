@@ -9,16 +9,41 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Configurar la API Key de forma segura desde los secretos de Streamlit
+# 2. Configurar la API Key desde los secretos
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 except Exception as e:
-    st.error("No se encontro la clave de API configurada en los secretos de Streamlit.")
+    st.error("No se encontro la clave de API en los secretos de Streamlit.")
 
-# Configurar parametros de generacion (Temperatura a 0.7 para mayor creatividad)
-configuracion_generacion = genai.types.GenerationConfig(
-    temperature=0.7
-)
+# Funcion para obtener un modelo valido dinamicamente
+@st.cache_resource
+def obtener_modelo():
+    config = genai.types.GenerationConfig(temperature=0.7)
+    # Lista de nombres a probar en orden de prioridad
+    modelos_a_probar = [
+        'gemini-1.5-flash-latest',
+        'gemini-1.5-pro-latest',
+        'gemini-pro',
+        'models/gemini-1.5-flash'
+    ]
+    
+    # Intentar buscar modelos soportados de la API
+    try:
+        modelos_disponibles = [
+            m.name for m in genai.list_models() 
+            if 'generateContent' in m.supported_generation_methods
+        ]
+        if modelos_disponibles:
+            # Usar el primer modelo disponible que sea de la serie flash o pro
+            for m in modelos_disponibles:
+                if 'flash' in m or 'pro' in m:
+                    return genai.GenerativeModel(model_name=m, generation_config=config)
+            return genai.GenerativeModel(model_name=modelos_disponibles[0], generation_config=config)
+    except Exception:
+        pass
+
+    # Fallback si falla el listado
+    return genai.GenerativeModel(model_name='gemini-pro', generation_config=config)
 
 # Inicializar estructuras en la sesion
 if "materiales_encontrados" not in st.session_state:
@@ -46,11 +71,7 @@ with col_centro:
             if busqueda_texto:
                 with st.spinner("La IA esta analizando el contexto..."):
                     try:
-                        # Inicializar el modelo especificando la temperatura en 0.7
-                        model = genai.GenerativeModel(
-                            model_name='gemini-1.5-flash',
-                            generation_config=configuracion_generacion
-                        )
+                        model = obtener_modelo()
                         prompt = f"Actua como un experto en construccion y materiales. Analiza el siguiente material o consulta y dame un nombre corto del material junto con su contexto tecnico principal: {busqueda_texto}"
                         response = model.generate_content(prompt)
                         
@@ -78,11 +99,7 @@ with col_centro:
             if st.button("Analizar con IA (Foto)", key="btn_ia_foto"):
                 with st.spinner("La IA esta procesando la imagen..."):
                     try:
-                        # Inicializar el modelo especificando la temperatura en 0.7
-                        model = genai.GenerativeModel(
-                            model_name='gemini-1.5-flash',
-                            generation_config=configuracion_generacion
-                        )
+                        model = obtener_modelo()
                         response = model.generate_content([
                             "Identifica este material de construccion en la imagen. Dame un nombre corto y su contexto tecnico resumido.",
                             img
