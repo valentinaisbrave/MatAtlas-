@@ -4,7 +4,7 @@ from google import genai
 from PIL import Image
 
 # 1. Configuracion de la pagina
-st.set_page_config(page_title="Buscador y Red de Materiales con IA", layout="wide")
+st.set_page_config(page_title="MAT(R)IZ", layout="wide")
 
 # 2. Instanciar el cliente
 try:
@@ -17,9 +17,11 @@ except Exception as e:
 def pipeline_text_generation(texto_usuario):
     """Pipeline para procesar y enriquecer texto."""
     prompt = f"Actua como un experto en construccion. Analiza y dame un nombre corto del material junto con su contexto tecnico principal: {texto_usuario}"
+    # Usamos extra_body para pasar la temperatura sin romper la funcion create()
     interaction = client.interactions.create(
         model="gemini-3.8-flash",
-        input=prompt
+        input=prompt,
+        extra_body={"temperature": 0.4}
     )
     return interaction.output_text.strip()
 
@@ -27,7 +29,8 @@ def pipeline_image_to_text(imagen_cargada):
     """Pipeline multimodal para extraer texto y contexto de imagenes."""
     interaction = client.interactions.create(
         model="gemini-3.8-flash",
-        input=["Identifica este material de construccion en la imagen. Dame un nombre corto y su contexto tecnico resumido.", imagen_cargada]
+        input=["Identifica este material de construccion en la imagen. Dame un nombre corto y su contexto tecnico resumido.", imagen_cargada],
+        extra_body={"temperature": 0.4}
     )
     return interaction.output_text.strip()
 
@@ -43,8 +46,8 @@ if "conexiones_red" not in st.session_state:
 col_izq, col_centro, col_der = st.columns([1, 2, 1])
 
 with col_centro:
-    st.markdown("<h1 style='text-align: center;'>Buscador de Materiales con IA</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center;'>Ingresa un texto o sube una foto.</p>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>MAT(R)IZ</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>Escribe un material o sube una foto de la que quieras saber el contexto.</p>", unsafe_allow_html=True)
     
     pestana_texto, pestana_foto = st.tabs(["Buscar por texto", "Buscar por foto"])
 
@@ -104,7 +107,7 @@ else:
 st.markdown("---")
 
 # --- BLOQUE 3: RED DE BURBUJAS Y CONEXION MULTIPLE ---
-st.subheader("Red de Materiales por Burbujas")
+st.subheader("Haz tus propias conexiones entre materiales")
 
 if st.session_state.materiales_encontrados:
     burbujas_seleccionadas = st.multiselect(
